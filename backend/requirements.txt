@@ -1,0 +1,7 @@
+fastapi
+uvicorn[standard]
+sqlmodel
+aiogram==3.*
+requests
+beautifulsoup4
+apscheduler

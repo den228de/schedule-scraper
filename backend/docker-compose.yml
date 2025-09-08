@@ -1,0 +1,22 @@
+version: '3.8'
+
+services:
+  scraper:
+    build: .
+    ports:
+      - "8001:8000"
+    environment:
+      - GROUP_CODE=cg389
+      - GROUP_PAGE_URL=https://biik.ru/rasp/cg389.htm
+      - DATABASE_URL=sqlite:///./data/schedule.db
+      - TZ=Asia/Irkutsk
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - TELEGRAM_ADMIN_ID=${TELEGRAM_ADMIN_ID}
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
