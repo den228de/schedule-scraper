@@ -148,8 +148,11 @@ def normalize_schedule(html: str) -> list[dict]:
                 if not current_date:
                     continue  # Пропускаем, если нет даты
                 
-                                # Время не указано в HTML, будем определять по номеру пары
-                
+                # Явно фильтруем мусорные строки, которые содержат лишь одиночные цифры (напр. ['8',''])
+                if subject_cell.strip() == '' and re.fullmatch(r'\d+', pair_cell.strip() or ''):
+                    continue
+
+                # Время не указано в HTML, будем определять по номеру пары
                 # Ищем номер пары в ячейке (просто цифра 1, 2, 3, 4, 5, 6, 7)
                 m_pair = re.search(r'\b([1-7])\b', pair_cell)
                 
@@ -170,87 +173,90 @@ def normalize_schedule(html: str) -> list[dict]:
                     m_teacher = re.search(r'([А-Я][а-я]+ [А-Я]\.[А-Я]\.)', subject_cell)
                 
                 # Если есть номер пары и дата - это строка с парой
-                if m_pair and current_date:
-                    # Проверяем, что предмет не пустой (не только пробелы и не &nbsp;)
-                    if not subject_cell.strip() or subject_cell.strip() == '\xa0' or len(subject_cell.strip()) < 3:
-                        continue  # Пропускаем пустые пары
-                    # Определяем номер пары
-                    pair_num = int(m_pair.group(1))
-                    
-                    # Определяем время по номеру пары
-                    time_start = ""
-                    time_end = ""
-                    if pair_num == 1:
-                        time_start, time_end = "08:30", "10:00"
-                    elif pair_num == 2:
-                        time_start, time_end = "10:10", "11:40"
-                    elif pair_num == 3:
-                        time_start, time_end = "12:20", "13:50"
-                    elif pair_num == 4:
-                        time_start, time_end = "14:10", "15:40"
-                    elif pair_num == 5:
-                        time_start, time_end = "15:50", "17:20"
-                    elif pair_num == 6:
-                        time_start, time_end = "17:30", "19:00"
-                    elif pair_num == 7:
-                        time_start, time_end = "19:10", "20:40"
-                    
-                    # Очищаем название предмета от лишнего
-                    clean_subject = subject_cell
-                    
-                    # Убираем аудиторию и преподавателя, оставляем только название предмета и тип
-                    if m_room:
-                        clean_subject = clean_subject.replace(m_room.group(1), '').strip()
-                    if m_teacher:
-                        clean_subject = clean_subject.replace(m_teacher.group(1), '').strip()
-                    
-                    # Убираем лишние пробелы
-                    clean_subject = re.sub(r'\s+', ' ', clean_subject).strip()
-                    
-                    # Извлекаем тип занятия
-                    kind_val = ""
-                    if m_kind:
-                        kind_raw = m_kind.group(1)
-                        if kind_raw == "Лек":
-                            kind_val = "Лекция"
-                        elif kind_raw == "Лаб":
-                            kind_val = "Лабораторная"
-                        elif kind_raw == "Практич" or kind_raw == "Пр":
-                            kind_val = "Практика"
-                        elif kind_raw == "Сем":
-                            kind_val = "Семинар"
-                        elif kind_raw == "Зач":
-                            kind_val = "Зачет"
-                        else:
-                            kind_val = kind_raw
+                if not (m_pair and current_date):
+                    continue
+
+                # Проверяем, что предмет не пустой (не только пробелы и не &nbsp;)
+                if not subject_cell.strip() or subject_cell.strip() == '\xa0' or len(subject_cell.strip()) < 3:
+                    continue  # Пропускаем пустые пары
+
+                # Определяем номер пары
+                pair_num = int(m_pair.group(1))
+                
+                # Определяем время по номеру пары
+                time_start = ""
+                time_end = ""
+                if pair_num == 1:
+                    time_start, time_end = "08:30", "10:00"
+                elif pair_num == 2:
+                    time_start, time_end = "10:10", "11:40"
+                elif pair_num == 3:
+                    time_start, time_end = "12:20", "13:50"
+                elif pair_num == 4:
+                    time_start, time_end = "14:10", "15:40"
+                elif pair_num == 5:
+                    time_start, time_end = "15:50", "17:20"
+                elif pair_num == 6:
+                    time_start, time_end = "17:30", "19:00"
+                elif pair_num == 7:
+                    time_start, time_end = "19:10", "20:40"
+                
+                # Очищаем название предмета от лишнего
+                clean_subject = subject_cell
+                
+                # Убираем аудиторию и преподавателя, оставляем только название предмета и тип
+                if m_room:
+                    clean_subject = clean_subject.replace(m_room.group(1), '').strip()
+                if m_teacher:
+                    clean_subject = clean_subject.replace(m_teacher.group(1), '').strip()
+                
+                # Убираем лишние пробелы
+                clean_subject = re.sub(r'\s+', ' ', clean_subject).strip()
+                
+                # Извлекаем тип занятия
+                kind_val = ""
+                if m_kind:
+                    kind_raw = m_kind.group(1)
+                    if kind_raw == "Лек":
+                        kind_val = "Лекция"
+                    elif kind_raw == "Лаб":
+                        kind_val = "Лабораторная"
+                    elif kind_raw == "Практич" or kind_raw == "Пр":
+                        kind_val = "Практика"
+                    elif kind_raw == "Сем":
+                        kind_val = "Семинар"
+                    elif kind_raw == "Зач":
+                        kind_val = "Зачет"
                     else:
-                        kind_val = "Практика"  # По умолчанию
-                    
-                    # Извлекаем аудиторию
-                    room_val = ""
-                    if m_room:
-                        room_raw = m_room.group(1)
-                        # Фильтруем проблемные номера аудиторий
-                        if room_raw.isdigit() and int(room_raw) in [4, 10, 12]:
-                            room_val = ""
-                        else:
-                            room_val = room_raw
-                    
-                    # Извлекаем преподавателя
-                    teacher_val = ""
-                    if m_teacher:
-                        teacher_val = m_teacher.group(1)
-                    
-                    # Добавляем дату в начало названия предмета для группировки по дням
-                    subject_with_date = f"{current_date} {current_weekday}-{current_week} | {clean_subject}"
-                    
+                        kind_val = kind_raw
+                else:
+                    kind_val = "Практика"  # По умолчанию
+                
+                # Извлекаем аудиторию
+                room_val = ""
+                if m_room:
+                    room_raw = m_room.group(1)
+                    # Фильтруем проблемные номера аудиторий
+                    if room_raw.isdigit() and int(room_raw) in [4, 10, 12]:
+                        room_val = ""
+                    else:
+                        room_val = room_raw
+                
+                # Извлекаем преподавателя
+                teacher_val = ""
+                if m_teacher:
+                    teacher_val = m_teacher.group(1)
+                
+                # Добавляем дату в начало названия предмета для группировки по дням
+                subject_with_date = f"{current_date} {current_weekday}-{current_week} | {clean_subject}"
+                
                 data.append({
-                        "pair": pair_num,
-                        "time": f"{time_start}-{time_end}",
-                        "subject": subject_with_date,
-                        "room": room_val,
-                        "kind": kind_val,
-                        "teacher": teacher_val,
+                    "pair": pair_num,
+                    "time": f"{time_start}-{time_end}",
+                    "subject": subject_with_date,
+                    "room": room_val,
+                    "kind": kind_val,
+                    "teacher": teacher_val,
                     "raw": tds
                 })
 
@@ -269,10 +275,35 @@ def normalize_schedule(html: str) -> list[dict]:
                     "raw": [txt]
                 })
     
-    return data
+    # Финальная очистка и дедупликация
+    cleaned = []
+    seen = set()
+    for item in data:
+        # Пропускаем мусорные элементы без предмета/времени или с подозрительным raw
+        if not item.get("subject") or not item.get("time"):
+            continue
+        raw_val = item.get("raw")
+        if isinstance(raw_val, list) and len(raw_val) == 2 and raw_val[0].isdigit() and raw_val[1] == "":
+            # Это как раз случай ["8", ""] из логов
+            continue
+        key = (
+            item.get("subject"),
+            item.get("pair"),
+            item.get("time"),
+            item.get("room"),
+            item.get("kind"),
+            item.get("teacher"),
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        cleaned.append(item)
+
+    return cleaned
 
 def schedule_hash(items: list[dict]) -> str:
     # Хэшируем только существенные поля
+    # Важно хэшировать уже очищенный и дедуплицированный список
     norm = [(i.get("pair"), i.get("time"), i.get("subject"), i.get("room"), i.get("kind")) for i in items]
     blob = repr(norm).encode("utf-8")
     return hashlib.sha256(blob).hexdigest()
