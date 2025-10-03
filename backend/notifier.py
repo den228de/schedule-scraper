@@ -37,7 +37,31 @@ def format_lesson_output(subject_name: str, lesson_type: str, room: str, teacher
         return f"*{subject_name}* *({lesson_type})*"
 
 bot = Bot(token=BOT_TOKEN) if BOT_TOKEN else None
-dp = Dispatcher() if bot else None
+dp = Dispatcher()
+
+# ---- Rate limit helpers ----
+def _is_private_chat(message: Message) -> bool:
+    chat = message.chat
+    return chat and getattr(chat, 'type', '') == 'private'
+
+async def _check_and_increment_limit(message: Message, limit: int = 3) -> bool:
+    """Возвращает True, если можно выполнять команду (лимит не превышен)."""
+    if _is_private_chat(message):
+        return True
+    try:
+        from datetime import datetime
+        from db import get_user_daily_count, increment_user_daily_count
+        chat_id = int(message.chat.id)
+        user_id = int(message.from_user.id) if message.from_user else 0
+        today = datetime.utcnow().strftime('%Y-%m-%d')
+        current = get_user_daily_count(chat_id, user_id, today)
+        if current >= limit:
+            return False
+        increment_user_daily_count(chat_id, user_id, today)
+        return True
+    except Exception as e:
+        print(f"RateLimit check error: {e}")
+        return True
 
 # Обработчик команды /start
 @dp.message(Command("start"))
@@ -69,6 +93,10 @@ async def cmd_start(message: Message):
 # Обработчик команды /schedule
 @dp.message(Command("schedule"))
 async def cmd_schedule(message: Message):
+    allowed = await _check_and_increment_limit(message, limit=3)
+    if not allowed:
+        await message.reply("⏳ Лимит 3 запроса в сутки в этом чате. Напиши мне в личку — без ограничений.")
+        return
     try:
         from db import list_versions
         from datetime import datetime, timedelta
@@ -298,6 +326,10 @@ async def cmd_schedule(message: Message):
 # Обработчик команды /status
 @dp.message(Command("status"))
 async def cmd_status(message: Message):
+    allowed = await _check_and_increment_limit(message, limit=3)
+    if not allowed:
+        await message.reply("⏳ Лимит 3 запроса в сутки в этом чате. Напиши мне в личку — без ограничений.")
+        return
     try:
         from db import list_versions
         items = list_versions(GROUP_CODE, 1)
@@ -316,6 +348,7 @@ async def cmd_status(message: Message):
 # Обработчик команды /help
 @dp.message(Command("help"))
 async def cmd_help(message: Message):
+    # help не ограничиваем
     help_text = (
         "🤖 **Бот расписания BIiK**\n\n"
         "**Команды:**\n"
@@ -337,6 +370,10 @@ async def cmd_help(message: Message):
 # Обработчик команды /date для показа расписания на конкретную дату
 @dp.message(Command("date"))
 async def cmd_date(message: Message):
+    allowed = await _check_and_increment_limit(message, limit=3)
+    if not allowed:
+        await message.reply("⏳ Лимит 3 запроса в сутки в этом чате. Напиши мне в личку — без ограничений.")
+        return
     try:
         # Извлекаем дату из сообщения (формат: /date 04.09.2025)
         text = message.text.strip()
@@ -497,6 +534,15 @@ async def start_bot():
         print("⚠️ Telegram бот не настроен (отсутствует токен)")
         return
     try:
+        # Установим команды бота на старте (общий scope)
+        from aiogram.types import BotCommand
+        await bot.set_my_commands([
+            BotCommand(command="start", description="Запуск"),
+            BotCommand(command="schedule", description="Расписание на сегодня/завтра"),
+            BotCommand(command="date", description="Расписание на дату"),
+            BotCommand(command="status", description="Статус системы"),
+            BotCommand(command="help", description="Помощь")
+        ])
         await dp.start_polling(bot)
     except Exception as e:
         print(f"Bot error: {e}")

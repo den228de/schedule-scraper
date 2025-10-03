@@ -15,6 +15,14 @@ class ScheduleVersion(SQLModel, table=True):
     payload: str                      # JSON нормализованных данных
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
+class UserDailyUsage(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    chat_id: int
+    user_id: int
+    date_ymd: str  # YYYY-MM-DD
+    count: int = Field(default=0)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
 def init_db():
     SQLModel.metadata.create_all(engine)
 
@@ -38,3 +46,31 @@ def list_versions(group_code: str, limit:int=10):
         stmt = select(ScheduleVersion).where(ScheduleVersion.group_code==group_code)\
             .order_by(ScheduleVersion.created_at.desc()).limit(limit)
         return list(s.exec(stmt))
+
+# ===== Rate Limit helpers =====
+def get_user_daily_count(chat_id: int, user_id: int, date_ymd: str) -> int:
+    with Session(engine) as s:
+        stmt = select(UserDailyUsage).where(
+            (UserDailyUsage.chat_id == chat_id) &
+            (UserDailyUsage.user_id == user_id) &
+            (UserDailyUsage.date_ymd == date_ymd)
+        )
+        rec = s.exec(stmt).first()
+        return rec.count if rec else 0
+
+def increment_user_daily_count(chat_id: int, user_id: int, date_ymd: str) -> int:
+    with Session(engine) as s:
+        stmt = select(UserDailyUsage).where(
+            (UserDailyUsage.chat_id == chat_id) &
+            (UserDailyUsage.user_id == user_id) &
+            (UserDailyUsage.date_ymd == date_ymd)
+        )
+        rec = s.exec(stmt).first()
+        if rec:
+            rec.count += 1
+            rec.updated_at = datetime.utcnow()
+        else:
+            rec = UserDailyUsage(chat_id=chat_id, user_id=user_id, date_ymd=date_ymd, count=1)
+            s.add(rec)
+        s.commit(); s.refresh(rec)
+        return rec.count
